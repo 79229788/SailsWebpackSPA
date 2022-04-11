@@ -13,8 +13,8 @@ module.exports = function (gulp, sails) {
     if(sails.debug) console.log('gulp执行任务[handleAssetsStaticJS]');
     return gulp.src(`${sails.paths.assets}/statics/js/**/*`)
       .pipe(babel({
-        presets: ['@babel/env'],
-        plugins: ['@babel/syntax-dynamic-import']
+        presets: ['@babel/preset-env'],
+        plugins: ['@babel/plugin-transform-runtime']
       }))
       .pipe(gulpIf(() => sails.config.prod && sails.config.deploy, uglify()))
       .pipe(gulp.dest(`${destPath}/statics/js`));

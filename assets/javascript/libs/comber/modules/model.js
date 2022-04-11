@@ -2,7 +2,6 @@ import Comber from '../cb';
 import axios from 'axios';
 import Schema from 'async-validator';
 import utils from '../utils/common';
-import cookies from '../utils/cookies';
 import _extend from 'lodash/extend';
 import _uniqueId from 'lodash/uniqueId';
 import _cloneDeep from 'lodash/cloneDeep';
@@ -15,6 +14,7 @@ import _compact from 'lodash/compact';
 import _each from 'lodash/each';
 import _get from 'lodash/get';
 import _has from 'lodash/has';
+import _pick from 'lodash/pick';
 //********************************定义模型类
 //********************************
 //********************************
@@ -41,7 +41,6 @@ _extend(Model.prototype, {
    * 初始化
    */
   init: function () {
-    this.sessionToken = cookies.get('sess');
     this.validationGroups = [];
   },
   /**
@@ -120,13 +119,16 @@ _extend(Model.prototype, {
   set: function (key, value) {
     if(!key) return this;
     if(_isObject(key)) {
-      return _each(key, (value, key) => {
+      _each(key, (value, key) => {
         this.set(key, value);
       });
+      return this;
     }else {
       this.attributes[key] = value;
     }
-    if(_has(this.attributes, this.idAttribute)) this.id = this.attributes[this.idAttribute];
+    if(_has(this.attributes, this.idAttribute)) {
+      this.id = this.attributes[this.idAttribute];
+    }
     delete this.attributes[this.idAttribute];
     return this;
   },
@@ -147,6 +149,33 @@ _extend(Model.prototype, {
     if(!this.has(key)) this.set(key, value);
   },
   /**
+   * 重设属性(会先清空所有, 请不要连续调用，否则上一条设置也会被清理)
+   * @param key
+   * @param value
+   */
+  reset: function (key, value) {
+    delete this.id;
+    this.attributes = {};
+    this.set(key, value);
+  },
+  /**
+   * 属性值拓展
+   * @param key
+   * @param value
+   */
+  extend: function (key, value) {
+    if(!this.get(key)) return this.set(key, value);
+    return this.set(key, _extend(this.get(key), value));
+  },
+  /**
+   * 计数操作
+   * @param key
+   * @param value
+   */
+  increment: function (key, value) {
+    this.set(key, (this.get(key) || 0) + Number(value));
+  },
+  /**
    * 取消设置key
    * @param keys
    */
@@ -155,14 +184,6 @@ _extend(Model.prototype, {
     keys.forEach(key => {
       delete this.attributes[key];
     });
-  },
-  /**
-   * 计数操作
-   * @param key
-   * @param value
-   */
-  increment: function (key, value) {
-    this.set(key, this.get(key) + Number(value));
   },
   /**
    * 判断属性是否存在
@@ -188,11 +209,13 @@ _extend(Model.prototype, {
   },
   /**
    * 转化为原始数据
+   * @param reservedKeys
    * @return {object}
    */
-  toOrigin: function () {
+  toOrigin: function (reservedKeys) {
     const data = _cloneDeep(this.attributes);
     data[this.idAttribute] = this.id;
+    if(reservedKeys) return _pick(data, reservedKeys);
     return data;
   },
   /**
@@ -213,7 +236,7 @@ _extend(Model.prototype, {
    * 验证是否有效
    * @return {Promise<unknown>}
    */
-  isValid: function (validateFirst = false) {
+  isValid: function (validateFirst = true) {
     return new Promise((ok, no) => {
       let _validators = this.validators;
       if(this.validationGroups === '*') {
@@ -236,7 +259,9 @@ _extend(Model.prototype, {
       }
       const validator = new Schema(_validators);
       validator.validate(
-        this.attributes,
+        _extend({
+          [this.idAttribute]: this.id,
+        }, this.attributes),
         {
           suppressWarning: !Comber.getConfig().debug,
           first: validateFirst
@@ -278,6 +303,8 @@ _extend(Model.prototype, {
     const opts = _extend({
       url: null,
       originData: false,
+      publicHeaders: true,
+      customHeaders: null,
     }, options || {});
     if(!opts.url) throw new Error('fetch url is not allowed to be empty');
     Comber.getConfig().beforeGetHandler.call(this, opts, 'model');
@@ -294,22 +321,21 @@ _extend(Model.prototype, {
       method: 'get',
       timeout: 1000 * Comber.getConfig().getTimeout,
     };
-    if(this.sessionToken) {
-      if(!requestOption.headers) requestOption.headers = {};
-      requestOption.headers.sess = this.sessionToken;
-    }
+    const headers = {};
+    if(opts.publicHeaders) Comber.getConfig().headersHandler.call(this, headers);
+    _extend(headers, opts.customHeaders);
+    if(JSON.stringify(headers) !== '{}') requestOption.headers = headers;
     return new Promise((ok, no) => {
       axios(requestOption).then(res => {
         if(opts.originData) return ok(res.data);
         const data = Comber.getConfig()
           .dataHandler.call(this, res.data, 'model') || res.data;
         if(_isObject(data)) {
-          return ok(
-            new this.constructor(data, { merge: false }),
-            res.data
-          );
+          const model = new this.constructor(data, { merge: false });
+          model._data = res.data;
+          return ok(model);
         }
-        ok(data, res.data);
+        ok(data);
       }).catch(error => {
         no(utils.handleError(error.response || error));
       });
@@ -326,42 +352,44 @@ _extend(Model.prototype, {
       useFormData: false,
       formFlatten: false,
       originData: false,
+      publicHeaders: true,
+      customHeaders: null,
     }, options || {});
     return new Promise((ok, no) => {
       if(!opts.url) return no(new Error('save url is not allowed to be empty'));
-      this.isValid(true).then(() => {
+      this.isValid().then(() => {
         Comber.getConfig().beforePostHandler.call(this, opts, 'model');
         const attrs = this._handleSavedObject(opts);
         const isFormData = attrs._hasFile || opts.useFormData;
         const formData = new FormData();
         if(isFormData) _each(attrs, (attr, key) => formData.append(key, attr));
         const domain = Comber.getConfig().apiUrl || '';
-        const url = opts.url;
         const requestOption = {
-          url: domain + url,
+          url: opts.url.indexOf('http') === 0 ? opts.url : (domain + opts.url),
           method: 'post',
-          headers: {
-            'content-type': isFormData
-              ? 'application/x-www-form-urlencoded'
-              : 'application/json;charset=utf-8'
-          },
           data: (isFormData ? formData : attrs),
           timeout: 1000 * Comber.getConfig().postTimeout,
         };
-        if(this.sessionToken) {
-          if(!requestOption.headers) requestOption.headers = {};
-          requestOption.headers.sess = this.sessionToken;
-        }
+        const headers = {
+          'content-type': isFormData
+            ? 'application/x-www-form-urlencoded'
+            : 'application/json;charset=utf-8'
+        };
+        if(opts.publicHeaders) Comber.getConfig().headersHandler.call(this, headers);
+        _extend(headers, opts.customHeaders);
+        if(JSON.stringify(headers) !== '{}') requestOption.headers = headers;
         axios(requestOption).then(res => {
           if(opts.originData) return ok(res.data);
           const data = Comber.getConfig()
             .dataHandler.call(this, res.data, 'model') || res.data;
           if(_isObject(data)) {
-            const newData = new this.constructor(data, { merge: false });
             this.set(data);
-            return ok(newData, res.data);
+            if(this.get('file') instanceof File) {
+              this.unset('file');
+            }
+            return ok(this);
           }
-          return ok(data, res.data);
+          return ok(data);
         }).catch(error => {
           no(utils.handleError(error.response || error));
         });
@@ -379,26 +407,30 @@ _extend(Model.prototype, {
     const opts = _extend({
       url: null,
       originData: false,
+      publicHeaders: true,
+      customHeaders: null,
     }, options || {});
     if(!opts.url) throw new Error('delete url is not allowed to be empty');
     Comber.getConfig().beforePostHandler.call(this, opts, 'model');
     const domain = Comber.getConfig().apiUrl || '';
-    const url = opts.url;
     const requestOption = {
-      url: domain + url,
+      url: opts.url.indexOf('http') === 0 ? opts.url : (domain + opts.url),
       method: 'delete',
-      headers: { 'content-type': 'application/json;charset=utf-8' },
       data: this.toOrigin(),
       timeout: 1000 * Comber.getConfig().postTimeout,
     };
-    if(this.sessionToken) {
-      if(!requestOption.headers) requestOption.headers = {};
-      requestOption.headers.sess = this.sessionToken;
-    }
+    const headers = {
+      'content-type': 'application/json;charset=utf-8'
+    };
+    if(opts.publicHeaders) Comber.getConfig().headersHandler.call(this, headers);
+    _extend(headers, opts.customHeaders);
+    if(JSON.stringify(headers) !== '{}') requestOption.headers = headers;
     return new Promise((ok, no) => {
       axios(requestOption).then(res => {
         if(opts.originData) return ok(res.data);
-        return ok(this);
+        const data = Comber.getConfig()
+          .dataHandler.call(this, res.data, 'model') || res.data;
+        return ok(data);
       }).catch(error => {
         no(utils.handleError(error.response || error));
       });

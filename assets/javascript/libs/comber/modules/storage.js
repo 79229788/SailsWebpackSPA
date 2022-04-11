@@ -6,13 +6,8 @@ import _isObject from 'lodash/isObject';
 //********************************定义缓存类
 //********************************
 //********************************
-const Storage = function() {
-  this.config = _extend({
-    maxSize: 2000,
-    clearSize: 1800,
-    separator: '@CACHE',
-  }, Comber.Storage.config);
-};
+const Storage = function() {};
+
 _extend(Storage.prototype, {
   /**
    * 自动清理缓存数据(清理浏览时间最早的数据)
@@ -22,14 +17,14 @@ _extend(Storage.prototype, {
     const currSize = utils.getStorageSize(type);
     console.log(
       '当前缓存空间---' + Math.round(currSize) + 'KB',
-      this.config.clearSize + 'KB时将要自动清理!'
+      Comber.getConfig().storage.clearSize + 'KB时将要自动清理!'
     );
-    if(currSize > this.config.clearSize) {
+    if(currSize > Comber.getConfig().storage.clearSize) {
       console.log('开始清理缓存');
       let objects = [];
       const storage = utils.getStorage(type);
       for(let key in storage) {
-        const valueArr = storage[key].split(this.config.separator);
+        const valueArr = storage[key].split(Comber.getConfig().storage.separator);
         if(valueArr.length > 1) {
           objects.push({
             key: key,
@@ -43,7 +38,7 @@ _extend(Storage.prototype, {
         return b.time - a.time;
       });
       //删除溢出的数据
-      while (utils.getStorageSize(type) > this.config.clearSize) {
+      while (utils.getStorageSize(type) > Comber.getConfig().storage.clearSize) {
         const delObj = objects.pop();
         const delKey = delObj.key;
         console.log('清理缓存---' + delKey);
@@ -60,7 +55,7 @@ _extend(Storage.prototype, {
   getStorage: function (key, type) {
     const storageValue = utils.getStorage(type).getItem('@CB_' + key);
     if(storageValue) {
-      const valueArr = storageValue.split(this.config.separator);
+      const valueArr = storageValue.split(Comber.getConfig().storage.separator);
       return valueArr[valueArr.length > 1 ? 1 : 0];
     }
     return null;
@@ -73,7 +68,7 @@ _extend(Storage.prototype, {
    */
   getObjectStorage: function (key, type) {
     try {
-      return JSON.parse(this.getStorage('@CB_' + key, type)) || {};
+      return JSON.parse(this.getStorage(key, type)) || {};
     }catch (error) {
       return {};
     }
@@ -86,7 +81,7 @@ _extend(Storage.prototype, {
    */
   setStorage: function (key, value, type) {
     value = _isObject(value) ? JSON.stringify(value) : value;
-    value = (new Date()).getTime() + this.config.separator + value;
+    value = (new Date()).getTime() + Comber.getConfig().storage.separator + value;
     utils.getStorage(type).setItem('@CB_' + key, value);
     this.autoClearStorage(type);
   },

@@ -72,7 +72,7 @@ export default {
    * @return {*}
    */
   getStorageSize: function(type) {
-    return utils.getCharLength(JSON.stringify(this.getStorage(type))) / 1024;
+    return this.getCharLength(JSON.stringify(this.getStorage(type))) / 1024;
   },
 
   /**
@@ -85,7 +85,7 @@ export default {
     for(let i in obj) {
       if(!obj.hasOwnProperty(i)) continue;
       //文件类型不做处理
-      if(utils.isFileType(obj[i])) {
+      if(this.isFileType(obj[i])) {
         output[i] = obj[i];
       }else if(typeof obj[i] === 'object') {
         const flatObject = flatten(obj[i]);
