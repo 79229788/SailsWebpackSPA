@@ -3,8 +3,7 @@ const babel = require('gulp-babel');
 const uglify = require('gulp-uglify');
 const cleanCSS = require('gulp-clean-css');
 const less = require('gulp-less');
-const sass = require('gulp-sass');
-sass.compiler = require('node-sass');
+const sass = require('gulp-sass')(require('sass'));
 module.exports = function (gulp, sails) {
   const destPath = sails.config.deploy
     ? sails.paths.wwwAssets
@@ -16,15 +15,15 @@ module.exports = function (gulp, sails) {
         presets: ['@babel/preset-env'],
         plugins: ['@babel/plugin-transform-runtime']
       }))
-      .pipe(gulpIf(() => sails.config.prod && sails.config.deploy, uglify()))
+      .pipe(gulpIf(() => sails.config.prod, uglify()))
       .pipe(gulp.dest(`${destPath}/statics/js`));
   };
   const handleAssetsStaticCSS = function () {
     if(sails.debug) console.log('gulp执行任务[handleAssetsStaticCSS]');
     return gulp.src(`${sails.paths.assets}/statics/css/**/*`)
-      .pipe(gulpIf(file => file.extname === '.scss', sass()))
+      .pipe(gulpIf(file => file.extname === '.scss', sass({ silent: true })))
       .pipe(gulpIf(file => file.extname === '.less', less()))
-      .pipe(gulpIf(() => sails.config.prod && sails.config.deploy, cleanCSS()))
+      .pipe(gulpIf(() => sails.config.prod, cleanCSS()))
       .pipe(gulp.dest(`${destPath}/statics/css`));
   };
   return {

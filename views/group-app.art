@@ -1,13 +1,9 @@
 {{ extend './layout/layout.art' }}
-{{ block 'title' }}单页{{ /block }}
-{{ block 'description' }}{{ /block }}
-{{ block 'keywords' }}{{ /block }}
-{{ block 'stylesheets' }}
-{{ /block }}
-{{ block 'scripts' }}
-<script src="/javascript/libs.js?t=1649679997" type="text/javascript" crossorigin="anonymous"></script>
-<script src="/javascript/chunk-group-app.js?t=1649679997" type="text/javascript" crossorigin="anonymous"></script>
-{{ /block }}
+{{ block 'title' }}{% options.title %}{{ /block }}
+{{ block 'description' }}{% options.description %}{{ /block }}
+{{ block 'keywords' }}{% options.keywords %}{{ /block }}
+{{ block 'stylesheets' }}{% css %}{{ /block }}
+{{ block 'scripts' }}{% js %}{{ /block }}
 
 {{ block 'content' }}
 <div id="page">
